@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luas
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -630,80 +630,103 @@ function Module:Init()
     -- Hook vào loadConfigData để load selectedEgg và update UI
     local originalLoadConfigData = ConfigSystem.loadConfigData
     ConfigSystem.loadConfigData = function(data)
+        -- ✅ GỌI ORIGINAL TRƯỚC
         originalLoadConfigData(data)
         
+        warn("🔍 Module Auto Hatch: Checking config data...")
+        
         -- Load selectedEgg + petPerkThresholds từ config
-        if data.HatchGlobals then
+        if data and data.HatchGlobals then
+            warn("📂 Found HatchGlobals in config!")
+            
             if data.HatchGlobals.selectedEgg then
                 HatchGlobals.selectedEgg = data.HatchGlobals.selectedEgg
+                warn("✅ Loaded selectedEgg:", HatchGlobals.selectedEgg)
             end
             
             -- ✅ Load Pet Perk Thresholds từ config
             if data.HatchGlobals.petPerkThresholds then
                 for key, value in pairs(data.HatchGlobals.petPerkThresholds) do
-                    HatchGlobals.petPerkThresholds[key] = value
+                    -- ✅ CONVERT STRING SANG NUMBER nếu cần
+                    local numValue = tonumber(value) or value
+                    HatchGlobals.petPerkThresholds[key] = numValue
+                    warn(string.format("✅ Loaded threshold %s: %.1f", key, numValue))
                 end
                 warn("✅ Đã load Pet Perk Thresholds từ config")
             end
             
-            -- ✅ Update dropdown UI nếu có
+            -- ✅ Update UI sau khi load (delay để UI đã render xong)
             task.spawn(function()
-                task.wait(0.5) -- Đợi UI load xong
+                task.wait(1) -- Tăng delay lên 1s
+                
+                warn("🔄 Updating UI elements...")
+                
+                -- Update dropdown
                 local dropdown = ConfigSystem.UIElements["selectedEgg"]
                 if dropdown and HatchGlobals.selectedEgg ~= "" then
                     if dropdown.SetValue then
-                        dropdown:SetValue({HatchGlobals.selectedEgg})
-                        warn("✅ Đã update UI dropdown với:", HatchGlobals.selectedEgg)
+                        pcall(function()
+                            dropdown:SetValue({HatchGlobals.selectedEgg})
+                            warn("✅ Đã update UI dropdown với:", HatchGlobals.selectedEgg)
+                        end)
                     end
+                else
+                    warn("⚠️ Dropdown not found or selectedEgg empty")
                 end
                 
-                -- ✅ Update slider UI cho tất cả pet perk thresholds
+                -- Update sliders
                 for perkKey, value in pairs(HatchGlobals.petPerkThresholds) do
                     local slider = ConfigSystem.UIElements["PetPerk_" .. perkKey]
                     if slider and slider.SetValue then
-                        slider:SetValue(value)
-                        warn(string.format("✅ Đã update slider %s: %.1f%%", perkKey, value))
+                        pcall(function()
+                            slider:SetValue(tonumber(value))
+                            warn(string.format("✅ Đã update slider %s: %.1f%%", perkKey, value))
+                        end)
+                    else
+                        warn(string.format("⚠️ Slider not found: PetPerk_%s", perkKey))
                     end
                 end
+                
+                -- Update toggles
+                local autoBuyState = _G.ToggleStates.AutoBuyEgg
+                local autoHatchState = _G.ToggleStates.AutoHatchEgg
+                
+                local autoBuyToggle = ConfigSystem.UIElements["AutoBuyEgg"]
+                if autoBuyToggle and autoBuyToggle.SetValue then
+                    pcall(function()
+                        autoBuyToggle:SetValue(autoBuyState or false)
+                        warn("✅ Đã update UI AutoBuyEgg:", autoBuyState)
+                    end)
+                end
+                
+                local autoHatchToggle = ConfigSystem.UIElements["AutoHatchEgg"]
+                if autoHatchToggle and autoHatchToggle.SetValue then
+                    pcall(function()
+                        autoHatchToggle:SetValue(autoHatchState or false)
+                        warn("✅ Đã update UI AutoHatchEgg:", autoHatchState)
+                    end)
+                end
+                
+                -- Start automation nếu cần
+                if autoBuyState and not HatchGlobals.isAutoBuying then
+                    warn("🔄 Đồng bộ AutoBuy từ config: true")
+                    startAutoBuy()
+                elseif not autoBuyState and HatchGlobals.isAutoBuying then
+                    warn("🔄 Đồng bộ AutoBuy từ config: false")
+                    HatchGlobals.isAutoBuying = false
+                end
+                
+                if autoHatchState and not HatchGlobals.isAutoHatching then
+                    warn("🔄 Đồng bộ AutoHatch từ config: true")
+                    startAutoHatch()
+                elseif not autoHatchState and HatchGlobals.isAutoHatching then
+                    warn("🔄 Đồng bộ AutoHatch từ config: false")
+                    HatchGlobals.isAutoHatching = false
+                end
             end)
+        else
+            warn("⚠️ No HatchGlobals found in config data")
         end
-        
-        -- ✅ ĐỒNG BỘ TOGGLE STATES → HATCHGLOBALS (sau 0.5s để UI load xong)
-        task.spawn(function()
-            task.wait(0.5)
-            local autoBuyState = _G.ToggleStates.AutoBuyEgg
-            local autoHatchState = _G.ToggleStates.AutoHatchEgg
-            
-            -- ✅ Update UI toggle AutoBuyEgg
-            local autoBuyToggle = ConfigSystem.UIElements["AutoBuyEgg"]
-            if autoBuyToggle and autoBuyToggle.SetValue then
-                autoBuyToggle:SetValue(autoBuyState or false)
-                warn("✅ Đã update UI AutoBuyEgg:", autoBuyState)
-            end
-            
-            -- ✅ Update UI toggle AutoHatchEgg
-            local autoHatchToggle = ConfigSystem.UIElements["AutoHatchEgg"]
-            if autoHatchToggle and autoHatchToggle.SetValue then
-                autoHatchToggle:SetValue(autoHatchState or false)
-                warn("✅ Đã update UI AutoHatchEgg:", autoHatchState)
-            end
-            
-            if autoBuyState and not HatchGlobals.isAutoBuying then
-                warn("🔄 Đồng bộ AutoBuy từ config: true")
-                startAutoBuy()
-            elseif not autoBuyState and HatchGlobals.isAutoBuying then
-                warn("🔄 Đồng bộ AutoBuy từ config: false")
-                HatchGlobals.isAutoBuying = false
-            end
-            
-            if autoHatchState and not HatchGlobals.isAutoHatching then
-                warn("🔄 Đồng bộ AutoHatch từ config: true")
-                startAutoHatch()
-            elseif not autoHatchState and HatchGlobals.isAutoHatching then
-                warn("🔄 Đồng bộ AutoHatch từ config: false")
-                HatchGlobals.isAutoHatching = false
-            end
-        end)
     end
     
     warn("✅ Auto Hatch Module loaded!")
