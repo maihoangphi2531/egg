@@ -279,6 +279,14 @@ end
 
 -- ==================== UI CREATION ====================
 local function createAutoHatchTab()
+    -- Khởi tạo Options wrapper cho delays
+    if not Options.BuyDelay then
+        Options.BuyDelay = { Value = 0.5, SetValue = function(self, val) self.Value = val end }
+    end
+    if not Options.HatchDelay then
+        Options.HatchDelay = { Value = 0.5, SetValue = function(self, val) self.Value = val end }
+    end
+    
     local TabHatch = Window:Tab({
         Title = "Auto Hatch",
         Icon = "egg",
@@ -306,10 +314,13 @@ local function createAutoHatchTab()
         Multi = false,
         Default = HatchGlobals.selectedEgg ~= "" and {HatchGlobals.selectedEgg} or nil,
         Callback = function(selected)
-            if selected and selected[1] then
-                HatchGlobals.selectedEgg = selected[1]
+            -- WindUI trả về table với 1 phần tử khi Multi = false
+            local eggName = type(selected) == "table" and selected[1] or selected
+            if eggName and eggName ~= "" then
+                HatchGlobals.selectedEgg = eggName
                 saveHatchConfig()
                 warn("✅ Đã chọn egg:", HatchGlobals.selectedEgg)
+                libNoti("✅ Đã chọn: " .. eggName, 2)
             end
         end
     })
@@ -323,10 +334,12 @@ local function createAutoHatchTab()
         Multi = false,
         Default = {HatchGlobals.purchaseMethod},
         Callback = function(selected)
-            if selected and selected[1] then
-                HatchGlobals.purchaseMethod = selected[1]
+            local method = type(selected) == "table" and selected[1] or selected
+            if method and method ~= "" then
+                HatchGlobals.purchaseMethod = method
                 saveHatchConfig()
                 warn("✅ Phương thức:", HatchGlobals.purchaseMethod)
+                libNoti("✅ Phương thức: " .. method, 2)
             end
         end
     })
@@ -340,9 +353,10 @@ local function createAutoHatchTab()
         Description = "Độ trễ giữa các lần mua (giây)",
         Min = 0.1,
         Max = 5,
-        Default = 0.5,
+        Default = Options.BuyDelay.Value,
         Callback = function(value)
-            -- Lưu vào Options
+            Options.BuyDelay.Value = value
+            warn("✅ Buy Delay:", value, "giây")
         end
     })
     ConfigSystem.registerUIElement("BuyDelay", BuyDelaySlider)
@@ -370,9 +384,10 @@ local function createAutoHatchTab()
         Description = "Độ trễ giữa các lần hatch (giây)",
         Min = 0.1,
         Max = 5,
-        Default = 0.5,
+        Default = Options.HatchDelay.Value,
         Callback = function(value)
-            -- Lưu vào Options
+            Options.HatchDelay.Value = value
+            warn("✅ Hatch Delay:", value, "giây")
         end
     })
     ConfigSystem.registerUIElement("HatchDelay", HatchDelaySlider)
