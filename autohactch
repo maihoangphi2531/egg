@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luassss
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -232,9 +232,7 @@ local function startAutoBuy()
             if not success then
                 task.wait(1)
             else
-                -- Lấy delay từ Options (sẽ được tạo tự động qua metatable)
-                local delay = (Options.BuyDelay and Options.BuyDelay.Value) or 0.5
-                task.wait(delay)
+                task.wait(0.5) -- Fixed delay
             end
         end
         
@@ -262,9 +260,7 @@ local function startAutoHatch()
             if hatchedCount == 0 then
                 task.wait(2) -- Đợi lâu hơn nếu không có egg
             else
-                -- Lấy delay từ Options (sẽ được tạo tự động qua metatable)
-                local delay = (Options.HatchDelay and Options.HatchDelay.Value) or 0.5
-                task.wait(delay)
+                task.wait(0.5) -- Fixed delay
             end
         end
         
@@ -321,12 +317,6 @@ local function createAutoHatchTab()
     
     TabHatch:Section({ Title = "🥚 Auto Egg System" })
     
-    -- Info paragraph
-    TabHatch:Paragraph({
-        Title = "ℹ️ Hướng Dẫn",
-        Description = "• Chọn loại egg muốn mua\n• Chọn phương thức thanh toán (Gold/Gems)\n• Bật Auto Buy để tự động mua egg\n• Bật Auto Hatch để tự động nở egg từ inventory"
-    })
-    
     TabHatch:Divider({ Text = "Egg Selection" })
     
     -- Lấy danh sách eggs
@@ -344,6 +334,7 @@ local function createAutoHatchTab()
             local eggName = type(selected) == "table" and selected[1] or selected
             if eggName and eggName ~= "" then
                 HatchGlobals.selectedEgg = eggName
+                HatchGlobals.purchaseMethod = "Gold" -- Luôn dùng Gold
                 saveHatchConfig()
                 warn("✅ Đã chọn egg:", HatchGlobals.selectedEgg)
                 libNoti("✅ Đã chọn: " .. eggName, 2)
@@ -352,39 +343,9 @@ local function createAutoHatchTab()
     })
     ConfigSystem.registerUIElement("selectedEgg", EggDropdown)
     
-    -- Dropdown chọn payment method
-    local PaymentDropdown = TabHatch:Dropdown({
-        Title = "💰 Phương Thức Thanh Toán",
-        Description = "Chọn Gold hoặc Gems",
-        Values = {"Gold", "Gems"},
-        Multi = false,
-        Default = {HatchGlobals.purchaseMethod},
-        Callback = function(selected)
-            local method = type(selected) == "table" and selected[1] or selected
-            if method and method ~= "" then
-                HatchGlobals.purchaseMethod = method
-                saveHatchConfig()
-                warn("✅ Phương thức:", HatchGlobals.purchaseMethod)
-                libNoti("✅ Phương thức: " .. method, 2)
-            end
-        end
-    })
-    ConfigSystem.registerUIElement("purchaseMethod", PaymentDropdown)
+    TabHatch:Divider({ Text = "Auto Settings" })
     
-    TabHatch:Divider({ Text = "Auto Buy Settings" })
-    
-    -- Buy delay slider
-    local BuyDelaySlider = TabHatch:Slider({
-        Title = "⏱️ Buy Delay",
-        Description = "Độ trễ giữa các lần mua (giây)",
-        Min = 0.1,
-        Max = 5,
-        Default = 0.5,
-        Callback = function(value)
-            -- Options sẽ tự động lưu qua metatable từ file chính
-        end
-    })
-    ConfigSystem.registerUIElement("BuyDelay", BuyDelaySlider)
+    TabHatch:Divider({ Text = "Auto Settings" })
     
     -- Auto buy toggle
     local AutoBuyToggle = TabHatch:Toggle({
@@ -400,21 +361,6 @@ local function createAutoHatchTab()
         end
     })
     ConfigSystem.registerUIElement("AutoBuyEgg", AutoBuyToggle)
-    
-    TabHatch:Divider({ Text = "Auto Hatch Settings" })
-    
-    -- Hatch delay slider
-    local HatchDelaySlider = TabHatch:Slider({
-        Title = "⏱️ Hatch Delay",
-        Description = "Độ trễ giữa các lần hatch (giây)",
-        Min = 0.1,
-        Max = 5,
-        Default = 0.5,
-        Callback = function(value)
-            -- Options sẽ tự động lưu qua metatable từ file chính
-        end
-    })
-    ConfigSystem.registerUIElement("HatchDelay", HatchDelaySlider)
     
     -- Auto hatch toggle
     local AutoHatchToggle = TabHatch:Toggle({
@@ -517,15 +463,40 @@ end
 
 -- ==================== INIT MODULE ====================
 function Module:Init()
-    -- Đăng ký delays vào OptionValues của file chính
-    local OptionValues = _G.OptionValues
-    if OptionValues then
-        OptionValues.BuyDelay = OptionValues.BuyDelay or 0.5
-        OptionValues.HatchDelay = OptionValues.HatchDelay or 0.5
-        warn("✅ Đã đăng ký BuyDelay và HatchDelay vào OptionValues")
+    -- Load config trước
+    loadHatchConfig()
+    
+    -- Tạo UI
+    createAutoHatchTab()
+    
+    -- Hook vào ConfigSystem để save HatchGlobals khi save config
+    local originalGetConfigData = ConfigSystem.getConfigData
+    ConfigSystem.getConfigData = function()
+        local data = originalGetConfigData()
+        -- Thêm HatchGlobals vào config
+        data.HatchGlobals = {
+            selectedEgg = HatchGlobals.selectedEgg,
+            purchaseMethod = HatchGlobals.purchaseMethod,
+            totalEggsBought = HatchGlobals.totalEggsBought,
+            totalEggsHatched = HatchGlobals.totalEggsHatched
+        }
+        return data
     end
     
-    createAutoHatchTab()
+    -- Hook vào loadConfigData để load HatchGlobals
+    local originalLoadConfigData = ConfigSystem.loadConfigData
+    ConfigSystem.loadConfigData = function(data)
+        originalLoadConfigData(data)
+        -- Load HatchGlobals từ config
+        if data.HatchGlobals then
+            HatchGlobals.selectedEgg = data.HatchGlobals.selectedEgg or ""
+            HatchGlobals.purchaseMethod = data.HatchGlobals.purchaseMethod or "Gold"
+            HatchGlobals.totalEggsBought = data.HatchGlobals.totalEggsBought or 0
+            HatchGlobals.totalEggsHatched = data.HatchGlobals.totalEggsHatched or 0
+            warn("✅ Đã load HatchGlobals từ config")
+        end
+    end
+    
     warn("✅ Auto Hatch Module loaded!")
     libNoti("✅ Auto Hatch Module đã sẵn sàng!", 3)
 end
