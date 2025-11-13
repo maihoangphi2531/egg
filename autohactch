@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luad
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luassss
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -219,12 +219,14 @@ local function startAutoBuy()
     end
     
     HatchGlobals.isAutoBuying = true
-    HatchGlobals.sessionStartTime = tick()
+    if HatchGlobals.sessionStartTime == 0 then
+        HatchGlobals.sessionStartTime = tick()
+    end
     
     libNoti("✅ Bắt đầu Auto Buy: " .. HatchGlobals.selectedEgg, 3)
     
     task.spawn(function()
-        while Toggles.AutoBuyEgg and Toggles.AutoBuyEgg.Value do
+        while HatchGlobals.isAutoBuying do
             local success = buyEgg(HatchGlobals.selectedEgg, HatchGlobals.purchaseMethod)
             
             if not success then
@@ -236,7 +238,6 @@ local function startAutoBuy()
             end
         end
         
-        HatchGlobals.isAutoBuying = false
         libNoti("⏹️ Đã dừng Auto Buy", 3)
     end)
 end
@@ -248,12 +249,14 @@ local function startAutoHatch()
     end
     
     HatchGlobals.isAutoHatching = true
-    HatchGlobals.sessionStartTime = tick()
+    if HatchGlobals.sessionStartTime == 0 then
+        HatchGlobals.sessionStartTime = tick()
+    end
     
     libNoti("✅ Bắt đầu Auto Hatch", 3)
     
     task.spawn(function()
-        while Toggles.AutoHatchEgg and Toggles.AutoHatchEgg.Value do
+        while HatchGlobals.isAutoHatching do
             local hatchedCount = hatchAllEggs()
             
             if hatchedCount == 0 then
@@ -265,7 +268,6 @@ local function startAutoHatch()
             end
         end
         
-        HatchGlobals.isAutoHatching = false
         libNoti("⏹️ Đã dừng Auto Hatch", 3)
     end)
 end
