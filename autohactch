@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luaddd
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -436,6 +436,20 @@ local function createAutoHatchTab()
         Description = "Tự động nở tất cả egg trong inventory",
         Default = false,
         Callback = function(state)
+            -- ✅ Cập nhật qua Toggles wrapper để ConfigSystem nhận được
+            if _G.Toggles and _G.Toggles.AutoHatchEgg then
+                _G.Toggles.AutoHatchEgg:SetValue(state)
+            end
+            
+            if state then
+                startAutoHatch()
+            else
+                HatchGlobals.isAutoHatching = false
+            end
+        end
+    })
+    ConfigSystem.registerUIElement("AutoHatchEgg", AutoHatchToggle)
+    
     TabHatch:Divider({ Text = "Smart Pet Keep" })
     
     -- Smart Pet Keep Toggle
@@ -569,17 +583,20 @@ local function createAutoHatchTab()
     
     -- Update stats task
     task.spawn(function()
-    -- Hook vào ConfigSystem để save/load selectedEgg (chung cho tất cả acc)
-    local originalGetConfigData = ConfigSystem.getConfigData
-    ConfigSystem.getConfigData = function()
-        local data = originalGetConfigData()
-        -- Lưu selectedEgg + petPerkThresholds vào config chung
-        data.HatchGlobals = {
-            selectedEgg = HatchGlobals.selectedEgg,
-            petPerkThresholds = HatchGlobals.petPerkThresholds
-        }
-        return data
-    end     
+        while true do
+            local elapsed = tick() - HatchGlobals.sessionStartTime
+            local stats = string.format(
+                "⏱️ Thời gian: %s\n" ..
+                "🛒 Đã mua: %s eggs\n" ..
+                "🐣 Đã hatch: %s eggs",
+                timeElapsed(math.floor(elapsed)),
+                formatNumber(HatchGlobals.totalEggsBought),
+                formatNumber(HatchGlobals.totalEggsHatched)
+            )
+            
+            StatsPara1:SetDesc(stats)
+            
+            local eggsInInv = #findEggsInInventory()
             StatsPara2:SetDesc(string.format("%d eggs", eggsInInv))
             
             task.wait(1)
