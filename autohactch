@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luad
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -22,6 +22,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ItemsModule = require(Shared:WaitForChild("Items"))
 local BuyEggRemote = Shared:WaitForChild("Pets"):WaitForChild("BuyEgg")
 local EquipItemRemote = Shared:WaitForChild("Inventory"):WaitForChild("EquipItem")
+local HatchRemote = Shared:WaitForChild("Pets"):WaitForChild("Hatch")
 
 -- ✅ Lấy Player references
 local PlayerGui = c:WaitForChild("PlayerGui")
@@ -142,8 +143,8 @@ local function findEggsInInventory()
     return eggs
 end
 
--- Hatch một egg từ inventory
-local function hatchEgg(eggItem)
+-- Equip egg vào Pet slot
+local function equipEgg(eggItem)
     if not eggItem or not eggItem.Parent then
         return false
     end
@@ -152,9 +153,40 @@ local function hatchEgg(eggItem)
         EquipItemRemote:FireServer(eggItem, PetEquip)
     end)
     
+    return success
+end
+
+-- Hatch egg đã được equip
+local function hatchEquippedEgg()
+    local success = pcall(function()
+        -- Lấy vị trí của player để hatch
+        local character = c.Character
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            local position = character.HumanoidRootPart.Position
+            HatchRemote:FireServer(position)
+        end
+    end)
+    
     if success then
         HatchGlobals.totalEggsHatched = HatchGlobals.totalEggsHatched + 1
     end
+    
+    return success
+end
+
+-- Hatch một egg: Equip -> Hatch -> Wait
+local function hatchSingleEgg(eggItem)
+    -- Bước 1: Equip egg
+    if not equipEgg(eggItem) then
+        return false
+    end
+    
+    task.wait(0.2) -- Đợi equip xong
+    
+    -- Bước 2: Hatch egg đã equip
+    local success = hatchEquippedEgg()
+    
+    task.wait(0.3) -- Đợi animation hatch
     
     return success
 end
@@ -165,7 +197,7 @@ local function hatchAllEggs()
     local hatchedCount = 0
     
     for _, egg in ipairs(eggs) do
-        if hatchEgg(egg) then
+        if hatchSingleEgg(egg) then
             hatchedCount = hatchedCount + 1
             task.wait(0.1) -- Delay nhỏ giữa các lần hatch
         end
@@ -483,6 +515,14 @@ end
 
 -- ==================== INIT MODULE ====================
 function Module:Init()
+    -- Đăng ký delays vào OptionValues của file chính
+    local OptionValues = _G.OptionValues
+    if OptionValues then
+        OptionValues.BuyDelay = OptionValues.BuyDelay or 0.5
+        OptionValues.HatchDelay = OptionValues.HatchDelay or 0.5
+        warn("✅ Đã đăng ký BuyDelay và HatchDelay vào OptionValues")
+    end
+    
     createAutoHatchTab()
     warn("✅ Auto Hatch Module loaded!")
     libNoti("✅ Auto Hatch Module đã sẵn sàng!", 3)
