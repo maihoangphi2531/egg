@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luas
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luaddd
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -259,15 +259,15 @@ local function checkPetPerks(petItem)
     }
 end
 
--- Recycle pet
-local function recyclePet(petItem)
+-- Sell pet
+local function sellPet(petItem)
     if not petItem or not petItem.Parent then
         return false
     end
     
-    local RecycleRemote = Shared:WaitForChild("Pets"):WaitForChild("RecyclePet")
+    local SellRemote = Shared:WaitForChild("Pets"):WaitForChild("SellPet")
     local success = pcall(function()
-        RecycleRemote:FireServer(petItem)
+        SellRemote:FireServer({petItem})
     end)
     
     return success
@@ -410,8 +410,6 @@ local function createAutoHatchTab()
     
     TabHatch:Divider({ Text = "Auto Settings" })
     
-    TabHatch:Divider({ Text = "Auto Settings" })
-    
     -- Auto buy toggle
     local AutoBuyToggle = TabHatch:Toggle({
         Title = "🛒 Auto Buy Egg",
@@ -438,36 +436,16 @@ local function createAutoHatchTab()
         Description = "Tự động nở tất cả egg trong inventory",
         Default = false,
         Callback = function(state)
-            -- ✅ Cập nhật qua Toggles wrapper để ConfigSystem nhận được
-            if _G.Toggles and _G.Toggles.AutoHatchEgg then
-                _G.Toggles.AutoHatchEgg:SetValue(state)
-            end
-            
-            if state then
-                startAutoHatch()
-            else
-                HatchGlobals.isAutoHatching = false
-            end
-        end
-    })
-    ConfigSystem.registerUIElement("AutoHatchEgg", AutoHatchToggle)
-    
     TabHatch:Divider({ Text = "Smart Pet Keep" })
     
     -- Smart Pet Keep Toggle
     local SmartPetKeepToggle = TabHatch:Toggle({
         Title = "🎯 Smart Pet Keep",
-        Description = "Tự động giữ pet có perk đạt ngưỡng, recycle còn lại",
+        Description = "Tự động giữ pet có perk đạt ngưỡng, bán còn lại",
         Default = false,
         Callback = function(state)
             HatchGlobals.smartPetKeep = state
         end
-    })
-    
-    -- Paragraph hướng dẫn
-    TabHatch:Paragraph({
-        Title = "📖 Hướng dẫn Smart Pet Keep",
-        Description = "Set ngưỡng % cho từng perk bên dưới. Pet có perk ≥ ngưỡng sẽ được giữ, còn lại sẽ bị recycle."
     })
     
     -- ✅ TẠO SLIDER CHO TỪNG PET PERK
@@ -492,23 +470,18 @@ local function createAutoHatchTab()
                 warn(string.format("📊 Set %s threshold: %.1f%%", perk.name, value))
             end
         })
+        ConfigSystem.registerUIElement("PetPerk_" .. perk.key, slider)
     end
     
-    -- Monitor pet inventory để auto recycle
-    task.spawn(function()
-        InventoryItems.ChildAdded:Connect(function(item)
-            if not HatchGlobals.smartPetKeep then return end
-            
-            -- Đợi item load xong
-            task.wait(0.5)
-            
-            if not item or not item.Parent then return end
-            
-            local itemData = bR[item.Name]
-            
-            -- Kiểm tra xem có phải pet không
-            if not itemData or itemData.Type ~= "Pet" then return end
-            
+    -- ✅ AUTO SELL PET KHI HATCH (Smart Pet Keep listener)
+    InventoryItems.ChildAdded:Connect(function(item)
+        if not HatchGlobals.smartPetKeep then return end
+        
+        task.wait(0.1) -- Đợi item load xong
+        
+        -- Kiểm tra xem có phải pet không
+        local itemData = bR[item.Name]
+        if itemData and itemData.Type == "Pet" then
             local shouldKeep, perkInfo = checkPetPerks(item)
             
             if perkInfo then
@@ -520,18 +493,17 @@ local function createAutoHatchTab()
                         perkInfo.threshold
                     ), 2)
                 else
-                    local success = recyclePet(item)
-                    if success then
-                        libNoti(string.format("♻️ Recycle: %s | %s: %.1f%% < %.1f%%", 
+                    if sellPet(item) then
+                        libNoti(string.format("💰 Bán: %s | %s: %.1f%% < %.1f%%", 
                             itemData.DisplayKey or item.Name,
                             perkInfo.name,
                             perkInfo.value,
                             perkInfo.threshold
-                        ), 3)
+                        ), 2)
                     end
                 end
             end
-        end)
+        end
     end)
     
     TabHatch:Divider({ Text = "Manual Actions" })
@@ -597,17 +569,17 @@ local function createAutoHatchTab()
     
     -- Update stats task
     task.spawn(function()
-        while true do
-            local eggsInInv = #findEggsInInventory()
-            local sessionTime = tick() - (HatchGlobals.sessionStartTime > 0 and HatchGlobals.sessionStartTime or tick())
-            
-            StatsPara1:SetDesc(string.format(
-                "Bought: %s | Hatched: %s\nSession Time: %s",
-                formatNumber(HatchGlobals.totalEggsBought),
-                formatNumber(HatchGlobals.totalEggsHatched),
-                timeElapsed(math.floor(sessionTime))
-            ))
-            
+    -- Hook vào ConfigSystem để save/load selectedEgg (chung cho tất cả acc)
+    local originalGetConfigData = ConfigSystem.getConfigData
+    ConfigSystem.getConfigData = function()
+        local data = originalGetConfigData()
+        -- Lưu selectedEgg + petPerkThresholds vào config chung
+        data.HatchGlobals = {
+            selectedEgg = HatchGlobals.selectedEgg,
+            petPerkThresholds = HatchGlobals.petPerkThresholds
+        }
+        return data
+    end     
             StatsPara2:SetDesc(string.format("%d eggs", eggsInInv))
             
             task.wait(1)
@@ -647,17 +619,6 @@ function Module:Init()
         if data.HatchGlobals then
             if data.HatchGlobals.selectedEgg then
                 HatchGlobals.selectedEgg = data.HatchGlobals.selectedEgg
-                warn("✅ Đã load selectedEgg từ config:", HatchGlobals.selectedEgg)
-                
-                -- Update UI dropdown
-                task.wait(0.5) -- Đợi UI render xong
-                if ConfigSystem.UIElements and ConfigSystem.UIElements.selectedEgg then
-                    local dropdown = ConfigSystem.UIElements.selectedEgg
-                    if dropdown and dropdown.SetValue then
-                        dropdown:SetValue({HatchGlobals.selectedEgg})
-                        warn("✅ Đã update UI dropdown với:", HatchGlobals.selectedEgg)
-                    end
-                end
             end
             
             -- ✅ Load Pet Perk Thresholds từ config
@@ -667,6 +628,18 @@ function Module:Init()
                 end
                 warn("✅ Đã load Pet Perk Thresholds từ config")
             end
+            
+            -- ✅ Update dropdown UI nếu có
+            task.spawn(function()
+                task.wait(0.5) -- Đợi UI load xong
+                local dropdown = ConfigSystem.UIElements["selectedEgg"]
+                if dropdown and HatchGlobals.selectedEgg ~= "" then
+                    if dropdown.SetValue then
+                        dropdown:SetValue({HatchGlobals.selectedEgg})
+                        warn("✅ Đã update UI dropdown với:", HatchGlobals.selectedEgg)
+                    end
+                end
+            end)
         end
         
         -- ✅ ĐỒNG BỘ TOGGLE STATES → HATCHGLOBALS (sau 0.5s để UI load xong)
