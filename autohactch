@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luad
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -489,7 +489,9 @@ local function createAutoHatchTab()
                 warn(string.format("📊 Set %s threshold: %.1f%%", perk.name, value))
             end
         })
+        -- ✅ ĐĂNG KÝ SLIDER với prefix "PetPerk_" để tránh trùng với weapon perk
         ConfigSystem.registerUIElement("PetPerk_" .. perk.key, slider)
+        warn(string.format("✅ Registered UI: PetPerk_%s", perk.key))
     end
     
     -- ✅ AUTO SELL PET KHI HATCH (Smart Pet Keep listener)
@@ -625,9 +627,15 @@ function Module:Init()
     ConfigSystem.getConfigData = function()
         local data = originalGetConfigData()
         -- Lưu selectedEgg + petPerkThresholds vào config chung
+        -- ✅ Chuyển đổi từ petPerkThresholds (không prefix) sang PetPerk_ (có prefix)
+        local petPerkConfig = {}
+        for perkKey, value in pairs(HatchGlobals.petPerkThresholds) do
+            petPerkConfig["PetPerk_" .. perkKey] = value
+        end
+        
         data.HatchGlobals = {
             selectedEgg = HatchGlobals.selectedEgg,
-            petPerkThresholds = HatchGlobals.petPerkThresholds
+            petPerkThresholds = petPerkConfig -- Lưu với prefix
         }
         return data
     end
@@ -654,8 +662,15 @@ function Module:Init()
                 for key, value in pairs(data.HatchGlobals.petPerkThresholds) do
                     -- ✅ CONVERT STRING SANG NUMBER nếu cần
                     local numValue = tonumber(value) or value
-                    HatchGlobals.petPerkThresholds[key] = numValue
-                    warn(string.format("✅ Loaded threshold %s: %.1f", key, numValue))
+                    
+                    -- ✅ Loại bỏ prefix "PetPerk_" khi lưu vào HatchGlobals
+                    local perkKey = key
+                    if string.sub(key, 1, 8) == "PetPerk_" then
+                        perkKey = string.sub(key, 9) -- Cắt bỏ 8 ký tự đầu ("PetPerk_")
+                    end
+                    
+                    HatchGlobals.petPerkThresholds[perkKey] = numValue
+                    warn(string.format("✅ Loaded threshold %s: %.1f", perkKey, numValue))
                 end
                 warn("✅ Đã load Pet Perk Thresholds từ config")
             end
@@ -681,11 +696,12 @@ function Module:Init()
                 
                 -- Update sliders
                 for perkKey, value in pairs(HatchGlobals.petPerkThresholds) do
+                    -- ✅ TÌM SLIDER với prefix "PetPerk_"
                     local slider = ConfigSystem.UIElements["PetPerk_" .. perkKey]
                     if slider and slider.SetValue then
                         pcall(function()
                             slider:SetValue(tonumber(value))
-                            warn(string.format("✅ Đã update slider %s: %.1f%%", perkKey, value))
+                            warn(string.format("✅ Đã update slider PetPerk_%s: %.1f%%", perkKey, value))
                         end)
                     else
                         warn(string.format("⚠️ Slider not found: PetPerk_%s", perkKey))
