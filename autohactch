@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luas
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -656,6 +656,15 @@ function Module:Init()
                         warn("✅ Đã update UI dropdown với:", HatchGlobals.selectedEgg)
                     end
                 end
+                
+                -- ✅ Update slider UI cho tất cả pet perk thresholds
+                for perkKey, value in pairs(HatchGlobals.petPerkThresholds) do
+                    local slider = ConfigSystem.UIElements["PetPerk_" .. perkKey]
+                    if slider and slider.SetValue then
+                        slider:SetValue(value)
+                        warn(string.format("✅ Đã update slider %s: %.1f%%", perkKey, value))
+                    end
+                end
             end)
         end
         
@@ -664,6 +673,20 @@ function Module:Init()
             task.wait(0.5)
             local autoBuyState = _G.ToggleStates.AutoBuyEgg
             local autoHatchState = _G.ToggleStates.AutoHatchEgg
+            
+            -- ✅ Update UI toggle AutoBuyEgg
+            local autoBuyToggle = ConfigSystem.UIElements["AutoBuyEgg"]
+            if autoBuyToggle and autoBuyToggle.SetValue then
+                autoBuyToggle:SetValue(autoBuyState or false)
+                warn("✅ Đã update UI AutoBuyEgg:", autoBuyState)
+            end
+            
+            -- ✅ Update UI toggle AutoHatchEgg
+            local autoHatchToggle = ConfigSystem.UIElements["AutoHatchEgg"]
+            if autoHatchToggle and autoHatchToggle.SetValue then
+                autoHatchToggle:SetValue(autoHatchState or false)
+                warn("✅ Đã update UI AutoHatchEgg:", autoHatchState)
+            end
             
             if autoBuyState and not HatchGlobals.isAutoBuying then
                 warn("🔄 Đồng bộ AutoBuy từ config: true")
