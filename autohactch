@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luad
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -458,9 +458,14 @@ local function createAutoHatchTab()
         Description = "Tự động giữ pet có perk đạt ngưỡng, bán còn lại",
         Default = false,
         Callback = function(state)
+            -- ✅ Cập nhật qua Toggles wrapper để ConfigSystem nhận được
+            if _G.Toggles and _G.Toggles.SmartPetKeep then
+                _G.Toggles.SmartPetKeep:SetValue(state)
+            end
             HatchGlobals.smartPetKeep = state
         end
     })
+    ConfigSystem.registerUIElement("SmartPetKeep", SmartPetKeepToggle)
     
     -- ✅ TẠO SLIDER CHO TỪNG PET PERK
     local petPerks = getPetPerksList()
@@ -690,6 +695,7 @@ function Module:Init()
                 -- Update toggles
                 local autoBuyState = _G.ToggleStates.AutoBuyEgg
                 local autoHatchState = _G.ToggleStates.AutoHatchEgg
+                local smartPetKeepState = _G.ToggleStates.SmartPetKeep
                 
                 local autoBuyToggle = ConfigSystem.UIElements["AutoBuyEgg"]
                 if autoBuyToggle and autoBuyToggle.SetValue then
@@ -704,6 +710,15 @@ function Module:Init()
                     pcall(function()
                         autoHatchToggle:SetValue(autoHatchState or false)
                         warn("✅ Đã update UI AutoHatchEgg:", autoHatchState)
+                    end)
+                end
+                
+                local smartPetKeepToggle = ConfigSystem.UIElements["SmartPetKeep"]
+                if smartPetKeepToggle and smartPetKeepToggle.SetValue then
+                    pcall(function()
+                        smartPetKeepToggle:SetValue(smartPetKeepState or false)
+                        HatchGlobals.smartPetKeep = smartPetKeepState or false
+                        warn("✅ Đã update UI SmartPetKeep:", smartPetKeepState)
                     end)
                 end
                 
