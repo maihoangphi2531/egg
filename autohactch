@@ -1,5 +1,5 @@
--- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
+-- ==================== AUTO HATCH MODULE ====================s
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luas
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -677,7 +677,43 @@ function Module:Init()
             
             -- ✅ Update UI sau khi load (delay để UI đã render xong)
             task.spawn(function()
-                task.wait(1) -- Tăng delay lên 1s
+                -- ✅ ĐỢI UI ELEMENTS ĐƯỢC ĐĂNG KÝ (tối đa 10s)
+                local maxWait = 10
+                local waited = 0
+                while waited < maxWait do
+                    local foundAll = true
+                    
+                    -- Kiểm tra dropdown
+                    if not ConfigSystem.UIElements["selectedEgg"] then
+                        foundAll = false
+                    end
+                    
+                    -- Kiểm tra ít nhất 1 slider pet perk
+                    local hasAnySlider = false
+                    for perkKey, _ in pairs(HatchGlobals.petPerkThresholds) do
+                        if ConfigSystem.UIElements["PetPerk_" .. perkKey] then
+                            hasAnySlider = true
+                            break
+                        end
+                    end
+                    if not hasAnySlider then
+                        foundAll = false
+                    end
+                    
+                    if foundAll then
+                        warn("✅ Tất cả UI elements đã được đăng ký!")
+                        break
+                    end
+                    
+                    task.wait(0.5)
+                    waited = waited + 0.5
+                end
+                
+                if waited >= maxWait then
+                    warn("⚠️ Timeout waiting for UI elements")
+                end
+                
+                task.wait(0.5) -- Delay thêm chút để chắc chắn
                 
                 warn("🔄 Updating UI elements...")
                 
