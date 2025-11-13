@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luaddd
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -351,6 +351,9 @@ local function createAutoHatchTab()
         Description = "Tự động mua egg đã chọn",
         Default = false,
         Callback = function(state)
+            -- ✅ Cập nhật ToggleStates ngay lập tức
+            _G.ToggleStates.AutoBuyEgg = state
+            
             if state then
                 startAutoBuy()
             else
@@ -366,6 +369,9 @@ local function createAutoHatchTab()
         Description = "Tự động nở tất cả egg trong inventory",
         Default = false,
         Callback = function(state)
+            -- ✅ Cập nhật ToggleStates ngay lập tức
+            _G.ToggleStates.AutoHatchEgg = state
+            
             if state then
                 startAutoHatch()
             else
