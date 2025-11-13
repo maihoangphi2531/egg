@@ -1,5 +1,5 @@
 -- ==================== AUTO HATCH MODULE ====================
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luaddd
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
@@ -272,9 +272,8 @@ end
 local function saveHatchConfig()
     if not writefile then return end
     
+    -- CHỈ lưu stats riêng từng acc (không lưu selectedEgg)
     local data = {
-        selectedEgg = HatchGlobals.selectedEgg,
-        purchaseMethod = HatchGlobals.purchaseMethod,
         totalEggsBought = HatchGlobals.totalEggsBought,
         totalEggsHatched = HatchGlobals.totalEggsHatched
     }
@@ -283,7 +282,7 @@ local function saveHatchConfig()
         writefile(HatchGlobals.ConfigFile, e:JSONEncode(data))
     end)
     
-    warn("💾 Đã lưu Hatch config")
+    warn("💾 Đã lưu Hatch stats (riêng acc)")
 end
 
 local function loadHatchConfig()
@@ -294,14 +293,13 @@ local function loadHatchConfig()
     local success = pcall(function()
         local data = e:JSONDecode(readfile(HatchGlobals.ConfigFile))
         
-        HatchGlobals.selectedEgg = data.selectedEgg or ""
-        HatchGlobals.purchaseMethod = data.purchaseMethod or "Gold"
+        -- Load stats riêng từng acc
         HatchGlobals.totalEggsBought = data.totalEggsBought or 0
         HatchGlobals.totalEggsHatched = data.totalEggsHatched or 0
     end)
     
     if success then
-        warn("📂 Đã load Hatch config")
+        warn("📂 Đã load Hatch stats (riêng acc)")
     end
     
     return success
@@ -335,7 +333,7 @@ local function createAutoHatchTab()
             if eggName and eggName ~= "" then
                 HatchGlobals.selectedEgg = eggName
                 HatchGlobals.purchaseMethod = "Gold" -- Luôn dùng Gold
-                saveHatchConfig()
+                -- KHÔNG gọi saveHatchConfig() vì selectedEgg sẽ được lưu qua ConfigSystem
                 warn("✅ Đã chọn egg:", HatchGlobals.selectedEgg)
                 libNoti("✅ Đã chọn: " .. eggName, 2)
             end
@@ -463,38 +461,66 @@ end
 
 -- ==================== INIT MODULE ====================
 function Module:Init()
-    -- Load config trước
+    -- Load config cá nhân trước (stats riêng từng acc)
     loadHatchConfig()
     
     -- Tạo UI
     createAutoHatchTab()
     
-    -- Hook vào ConfigSystem để save HatchGlobals khi save config
+    -- Hook vào ConfigSystem để save/load selectedEgg (chung cho tất cả acc)
     local originalGetConfigData = ConfigSystem.getConfigData
     ConfigSystem.getConfigData = function()
         local data = originalGetConfigData()
-        -- Thêm HatchGlobals vào config
+        -- CHỈ lưu selectedEgg vào config chung
         data.HatchGlobals = {
-            selectedEgg = HatchGlobals.selectedEgg,
-            purchaseMethod = HatchGlobals.purchaseMethod,
-            totalEggsBought = HatchGlobals.totalEggsBought,
-            totalEggsHatched = HatchGlobals.totalEggsHatched
+            selectedEgg = HatchGlobals.selectedEgg
         }
         return data
     end
     
-    -- Hook vào loadConfigData để load HatchGlobals
+    -- Hook vào loadConfigData để load selectedEgg và update UI
     local originalLoadConfigData = ConfigSystem.loadConfigData
     ConfigSystem.loadConfigData = function(data)
         originalLoadConfigData(data)
-        -- Load HatchGlobals từ config
-        if data.HatchGlobals then
-            HatchGlobals.selectedEgg = data.HatchGlobals.selectedEgg or ""
-            HatchGlobals.purchaseMethod = data.HatchGlobals.purchaseMethod or "Gold"
-            HatchGlobals.totalEggsBought = data.HatchGlobals.totalEggsBought or 0
-            HatchGlobals.totalEggsHatched = data.HatchGlobals.totalEggsHatched or 0
-            warn("✅ Đã load HatchGlobals từ config")
+        
+        -- Load selectedEgg từ config
+        if data.HatchGlobals and data.HatchGlobals.selectedEgg then
+            HatchGlobals.selectedEgg = data.HatchGlobals.selectedEgg
+            warn("✅ Đã load selectedEgg từ config:", HatchGlobals.selectedEgg)
+            
+            -- Update UI dropdown
+            task.wait(0.5) -- Đợi UI render xong
+            if ConfigSystem.UIElements and ConfigSystem.UIElements.selectedEgg then
+                local dropdown = ConfigSystem.UIElements.selectedEgg
+                if dropdown and dropdown.SetValue then
+                    dropdown:SetValue({HatchGlobals.selectedEgg})
+                    warn("✅ Đã update UI dropdown với:", HatchGlobals.selectedEgg)
+                end
+            end
         end
+        
+        -- ✅ ĐỒNG BỘ TOGGLE STATES → HATCHGLOBALS (sau 0.5s để UI load xong)
+        task.spawn(function()
+            task.wait(0.5)
+            local autoBuyState = _G.ToggleStates.AutoBuyEgg
+            local autoHatchState = _G.ToggleStates.AutoHatchEgg
+            
+            if autoBuyState and not HatchGlobals.isAutoBuying then
+                warn("🔄 Đồng bộ AutoBuy từ config: true")
+                startAutoBuy()
+            elseif not autoBuyState and HatchGlobals.isAutoBuying then
+                warn("🔄 Đồng bộ AutoBuy từ config: false")
+                HatchGlobals.isAutoBuying = false
+            end
+            
+            if autoHatchState and not HatchGlobals.isAutoHatching then
+                warn("🔄 Đồng bộ AutoHatch từ config: true")
+                startAutoHatch()
+            elseif not autoHatchState and HatchGlobals.isAutoHatching then
+                warn("🔄 Đồng bộ AutoHatch từ config: false")
+                HatchGlobals.isAutoHatching = false
+            end
+        end)
     end
     
     warn("✅ Auto Hatch Module loaded!")
