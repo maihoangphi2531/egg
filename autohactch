@@ -1,0 +1,486 @@
+-- ==================== AUTO HATCH MODULE ====================
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
+-- Yêu cầu: WindUI, các biến global từ file chính
+-- ===========================================================
+
+local Module = {}
+
+-- ✅ Lấy các biến cần thiết từ file chính
+local WindUI = _G.WindUI
+local Window = _G.Window
+local Players = game:GetService("Players")
+local c = _G.PlayerLocal
+local d = _G.UserId
+local e = _G.HttpService
+local ConfigSystem = _G.ConfigSystem
+local Toggles = _G.Toggles
+local Options = _G.Options
+
+-- ✅ Lấy ReplicatedStorage references
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local ItemsModule = require(Shared:WaitForChild("Items"))
+local BuyEggRemote = Shared:WaitForChild("Pets"):WaitForChild("BuyEgg")
+local EquipItemRemote = Shared:WaitForChild("Inventory"):WaitForChild("EquipItem")
+
+-- ✅ Lấy Player references
+local PlayerGui = c:WaitForChild("PlayerGui")
+local Profile = PlayerGui:WaitForChild("Profile")
+local InventoryItems = Profile:WaitForChild("Inventory"):WaitForChild("Items")
+local PlayerEquips = ReplicatedStorage:WaitForChild("PlayerEquips"):WaitForChild(c.Name)
+local PetEquip = PlayerEquips:WaitForChild("Pet")
+
+-- ==================== GLOBALS ====================
+local HatchGlobals = {
+    isAutoHatching = false,
+    isAutoBuying = false,
+    selectedEgg = "",
+    purchaseMethod = "Gold", -- "Gold" hoặc "Gems"
+    eggsList = {},
+    totalEggsBought = 0,
+    totalEggsHatched = 0,
+    sessionStartTime = 0,
+    -- Config
+    ConfigFile = "AnyaHub_HatchConfig_" .. c.Name .. ".txt"
+}
+
+-- ==================== UTILITY FUNCTIONS ====================
+local function libNoti(msg, duration)
+    WindUI:Notify({
+        Title = "Auto Hatch",
+        Content = msg,
+        Duration = duration or 5
+    })
+end
+
+local function formatNumber(num)
+    if num >= 1000000 then
+        return string.format("%.1fM", num / 1000000)
+    elseif num >= 1000 then
+        return string.format("%.1fK", num / 1000)
+    else
+        return tostring(num)
+    end
+end
+
+local function timeElapsed(seconds)
+    local hours = math.floor(seconds / 3600)
+    local mins = math.floor((seconds % 3600) / 60)
+    local secs = seconds % 60
+    
+    if hours > 0 then
+        return string.format("%dh %dm %ds", hours, mins, secs)
+    elseif mins > 0 then
+        return string.format("%dm %ds", mins, secs)
+    else
+        return string.format("%ds", secs)
+    end
+end
+
+-- ==================== EGG FUNCTIONS ====================
+-- Lấy danh sách eggs từ Items module
+local function getEggsList()
+    local eggs = {}
+    
+    for itemName, itemData in pairs(ItemsModule) do
+        -- Kiểm tra xem có phải là egg không (thường có Type = "Egg" hoặc tên chứa "Egg")
+        if itemData.Type == "Egg" or string.match(itemName, "Egg") then
+            table.insert(eggs, itemName)
+        end
+    end
+    
+    table.sort(eggs)
+    
+    -- Nếu không tìm thấy eggs, thêm một số eggs phổ biến
+    if #eggs == 0 then
+        eggs = {
+            "StarterEgg",
+            "ForestEgg", 
+            "DesertEgg",
+            "ArcticEgg",
+            "VolcanoEgg",
+            "OceanEgg",
+            "SpaceEgg",
+            "MythicEgg",
+            "LegendaryEgg",
+            "StarEgg"
+        }
+    end
+    
+    return eggs
+end
+
+-- Mua egg
+local function buyEgg(eggName, method)
+    if not eggName or eggName == "" then
+        return false
+    end
+    
+    local success = pcall(function()
+        BuyEggRemote:FireServer(eggName, method or "Gold")
+    end)
+    
+    if success then
+        HatchGlobals.totalEggsBought = HatchGlobals.totalEggsBought + 1
+    end
+    
+    return success
+end
+
+-- Tìm tất cả eggs trong inventory
+local function findEggsInInventory()
+    local eggs = {}
+    
+    for _, item in ipairs(InventoryItems:GetChildren()) do
+        -- Kiểm tra xem item có phải là egg không
+        local itemName = item.Name
+        if string.match(itemName, "Egg") or (ItemsModule[itemName] and ItemsModule[itemName].Type == "Egg") then
+            table.insert(eggs, item)
+        end
+    end
+    
+    return eggs
+end
+
+-- Hatch một egg từ inventory
+local function hatchEgg(eggItem)
+    if not eggItem or not eggItem.Parent then
+        return false
+    end
+    
+    local success = pcall(function()
+        EquipItemRemote:FireServer(eggItem, PetEquip)
+    end)
+    
+    if success then
+        HatchGlobals.totalEggsHatched = HatchGlobals.totalEggsHatched + 1
+    end
+    
+    return success
+end
+
+-- Hatch tất cả eggs trong inventory
+local function hatchAllEggs()
+    local eggs = findEggsInInventory()
+    local hatchedCount = 0
+    
+    for _, egg in ipairs(eggs) do
+        if hatchEgg(egg) then
+            hatchedCount = hatchedCount + 1
+            task.wait(0.1) -- Delay nhỏ giữa các lần hatch
+        end
+    end
+    
+    return hatchedCount
+end
+
+-- ==================== AUTO FUNCTIONS ====================
+local function startAutoBuy()
+    if HatchGlobals.isAutoBuying then
+        warn("⚠️ Auto Buy đã đang chạy!")
+        return
+    end
+    
+    if not HatchGlobals.selectedEgg or HatchGlobals.selectedEgg == "" then
+        libNoti("❌ Vui lòng chọn egg trước!", 3)
+        return
+    end
+    
+    HatchGlobals.isAutoBuying = true
+    HatchGlobals.sessionStartTime = tick()
+    
+    libNoti("✅ Bắt đầu Auto Buy: " .. HatchGlobals.selectedEgg, 3)
+    
+    task.spawn(function()
+        while Toggles.AutoBuyEgg and Toggles.AutoBuyEgg.Value do
+            local success = buyEgg(HatchGlobals.selectedEgg, HatchGlobals.purchaseMethod)
+            
+            if not success then
+                task.wait(1)
+            else
+                -- Delay dựa trên Options
+                local delay = Options.BuyDelay and Options.BuyDelay.Value or 0.5
+                task.wait(delay)
+            end
+        end
+        
+        HatchGlobals.isAutoBuying = false
+        libNoti("⏹️ Đã dừng Auto Buy", 3)
+    end)
+end
+
+local function startAutoHatch()
+    if HatchGlobals.isAutoHatching then
+        warn("⚠️ Auto Hatch đã đang chạy!")
+        return
+    end
+    
+    HatchGlobals.isAutoHatching = true
+    HatchGlobals.sessionStartTime = tick()
+    
+    libNoti("✅ Bắt đầu Auto Hatch", 3)
+    
+    task.spawn(function()
+        while Toggles.AutoHatchEgg and Toggles.AutoHatchEgg.Value do
+            local hatchedCount = hatchAllEggs()
+            
+            if hatchedCount == 0 then
+                task.wait(2) -- Đợi lâu hơn nếu không có egg
+            else
+                -- Delay dựa trên Options
+                local delay = Options.HatchDelay and Options.HatchDelay.Value or 0.5
+                task.wait(delay)
+            end
+        end
+        
+        HatchGlobals.isAutoHatching = false
+        libNoti("⏹️ Đã dừng Auto Hatch", 3)
+    end)
+end
+
+-- ==================== CONFIG FUNCTIONS ====================
+local function saveHatchConfig()
+    if not writefile then return end
+    
+    local data = {
+        selectedEgg = HatchGlobals.selectedEgg,
+        purchaseMethod = HatchGlobals.purchaseMethod,
+        totalEggsBought = HatchGlobals.totalEggsBought,
+        totalEggsHatched = HatchGlobals.totalEggsHatched
+    }
+    
+    pcall(function()
+        writefile(HatchGlobals.ConfigFile, e:JSONEncode(data))
+    end)
+    
+    warn("💾 Đã lưu Hatch config")
+end
+
+local function loadHatchConfig()
+    if not (isfile and readfile and isfile(HatchGlobals.ConfigFile)) then
+        return false
+    end
+    
+    local success = pcall(function()
+        local data = e:JSONDecode(readfile(HatchGlobals.ConfigFile))
+        
+        HatchGlobals.selectedEgg = data.selectedEgg or ""
+        HatchGlobals.purchaseMethod = data.purchaseMethod or "Gold"
+        HatchGlobals.totalEggsBought = data.totalEggsBought or 0
+        HatchGlobals.totalEggsHatched = data.totalEggsHatched or 0
+    end)
+    
+    if success then
+        warn("📂 Đã load Hatch config")
+    end
+    
+    return success
+end
+
+-- ==================== UI CREATION ====================
+local function createAutoHatchTab()
+    local TabHatch = Window:Tab({
+        Title = "Auto Hatch",
+        Icon = "egg",
+        Locked = false
+    })
+    
+    TabHatch:Section({ Title = "🥚 Auto Egg System" })
+    
+    -- Info paragraph
+    TabHatch:Paragraph({
+        Title = "ℹ️ Hướng Dẫn",
+        Description = "• Chọn loại egg muốn mua\n• Chọn phương thức thanh toán (Gold/Gems)\n• Bật Auto Buy để tự động mua egg\n• Bật Auto Hatch để tự động nở egg từ inventory"
+    })
+    
+    TabHatch:Divider({ Text = "Egg Selection" })
+    
+    -- Lấy danh sách eggs
+    HatchGlobals.eggsList = getEggsList()
+    
+    -- Dropdown chọn egg
+    local EggDropdown = TabHatch:Dropdown({
+        Title = "📋 Chọn Egg",
+        Description = "Chọn loại egg muốn mua",
+        Values = HatchGlobals.eggsList,
+        Multi = false,
+        Default = HatchGlobals.selectedEgg ~= "" and {HatchGlobals.selectedEgg} or nil,
+        Callback = function(selected)
+            if selected and selected[1] then
+                HatchGlobals.selectedEgg = selected[1]
+                saveHatchConfig()
+                warn("✅ Đã chọn egg:", HatchGlobals.selectedEgg)
+            end
+        end
+    })
+    ConfigSystem.registerUIElement("selectedEgg", EggDropdown)
+    
+    -- Dropdown chọn payment method
+    local PaymentDropdown = TabHatch:Dropdown({
+        Title = "💰 Phương Thức Thanh Toán",
+        Description = "Chọn Gold hoặc Gems",
+        Values = {"Gold", "Gems"},
+        Multi = false,
+        Default = {HatchGlobals.purchaseMethod},
+        Callback = function(selected)
+            if selected and selected[1] then
+                HatchGlobals.purchaseMethod = selected[1]
+                saveHatchConfig()
+                warn("✅ Phương thức:", HatchGlobals.purchaseMethod)
+            end
+        end
+    })
+    ConfigSystem.registerUIElement("purchaseMethod", PaymentDropdown)
+    
+    TabHatch:Divider({ Text = "Auto Buy Settings" })
+    
+    -- Buy delay slider
+    local BuyDelaySlider = TabHatch:Slider({
+        Title = "⏱️ Buy Delay",
+        Description = "Độ trễ giữa các lần mua (giây)",
+        Min = 0.1,
+        Max = 5,
+        Default = 0.5,
+        Callback = function(value)
+            -- Lưu vào Options
+        end
+    })
+    ConfigSystem.registerUIElement("BuyDelay", BuyDelaySlider)
+    
+    -- Auto buy toggle
+    local AutoBuyToggle = TabHatch:Toggle({
+        Title = "🛒 Auto Buy Egg",
+        Description = "Tự động mua egg đã chọn",
+        Default = false,
+        Callback = function(state)
+            if state then
+                startAutoBuy()
+            else
+                HatchGlobals.isAutoBuying = false
+            end
+        end
+    })
+    ConfigSystem.registerUIElement("AutoBuyEgg", AutoBuyToggle)
+    
+    TabHatch:Divider({ Text = "Auto Hatch Settings" })
+    
+    -- Hatch delay slider
+    local HatchDelaySlider = TabHatch:Slider({
+        Title = "⏱️ Hatch Delay",
+        Description = "Độ trễ giữa các lần hatch (giây)",
+        Min = 0.1,
+        Max = 5,
+        Default = 0.5,
+        Callback = function(value)
+            -- Lưu vào Options
+        end
+    })
+    ConfigSystem.registerUIElement("HatchDelay", HatchDelaySlider)
+    
+    -- Auto hatch toggle
+    local AutoHatchToggle = TabHatch:Toggle({
+        Title = "🐣 Auto Hatch Egg",
+        Description = "Tự động nở tất cả egg trong inventory",
+        Default = false,
+        Callback = function(state)
+            if state then
+                startAutoHatch()
+            else
+                HatchGlobals.isAutoHatching = false
+            end
+        end
+    })
+    ConfigSystem.registerUIElement("AutoHatchEgg", AutoHatchToggle)
+    
+    TabHatch:Divider({ Text = "Manual Actions" })
+    
+    -- Button mua 1 egg
+    TabHatch:Button({
+        Title = "🛒 Mua 1 Egg",
+        Description = "Mua 1 egg thủ công",
+        Callback = function()
+            if not HatchGlobals.selectedEgg or HatchGlobals.selectedEgg == "" then
+                libNoti("❌ Vui lòng chọn egg trước!", 3)
+                return
+            end
+            
+            local success = buyEgg(HatchGlobals.selectedEgg, HatchGlobals.purchaseMethod)
+            if success then
+                libNoti("✅ Đã mua 1 " .. HatchGlobals.selectedEgg, 2)
+            else
+                libNoti("❌ Không thể mua egg!", 3)
+            end
+        end
+    })
+    
+    -- Button hatch all
+    TabHatch:Button({
+        Title = "🐣 Hatch All Eggs",
+        Description = "Nở tất cả egg trong inventory (nhấn đúp)",
+        Callback = function()
+            local count = hatchAllEggs()
+            if count > 0 then
+                libNoti("✅ Đã hatch " .. count .. " eggs", 3)
+            else
+                libNoti("⚠️ Không có egg trong inventory", 3)
+            end
+        end
+    })
+    
+    -- Button reset stats
+    TabHatch:Button({
+        Title = "🔄 Reset Statistics",
+        Description = "Reset thống kê session",
+        Callback = function()
+            HatchGlobals.totalEggsBought = 0
+            HatchGlobals.totalEggsHatched = 0
+            HatchGlobals.sessionStartTime = tick()
+            saveHatchConfig()
+            libNoti("✅ Đã reset thống kê", 2)
+        end
+    })
+    
+    TabHatch:Divider({ Text = "Statistics" })
+    
+    -- Statistics paragraphs
+    local StatsPara1 = TabHatch:Paragraph({
+        Title = "📊 Session Stats",
+        Description = "Loading..."
+    })
+    
+    local StatsPara2 = TabHatch:Paragraph({
+        Title = "🥚 Eggs in Inventory",
+        Description = "Loading..."
+    })
+    
+    -- Update stats task
+    task.spawn(function()
+        while true do
+            local eggsInInv = #findEggsInInventory()
+            local sessionTime = tick() - (HatchGlobals.sessionStartTime > 0 and HatchGlobals.sessionStartTime or tick())
+            
+            StatsPara1:SetDesc(string.format(
+                "Bought: %s | Hatched: %s\nSession Time: %s",
+                formatNumber(HatchGlobals.totalEggsBought),
+                formatNumber(HatchGlobals.totalEggsHatched),
+                timeElapsed(math.floor(sessionTime))
+            ))
+            
+            StatsPara2:SetDesc(string.format("%d eggs", eggsInInv))
+            
+            task.wait(1)
+        end
+    end)
+    
+    -- Load config
+    loadHatchConfig()
+end
+
+-- ==================== INIT MODULE ====================
+function Module:Init()
+    createAutoHatchTab()
+    warn("✅ Auto Hatch Module loaded!")
+    libNoti("✅ Auto Hatch Module đã sẵn sàng!", 3)
+end
+
+return Module
