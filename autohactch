@@ -1,5 +1,5 @@
--- ==================== AUTO HATCH MODULE ====================s
--- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.luas
+-- ==================== AUTO HATCH MODULE ====================
+-- Load từ: https://raw.githubusercontent.com/maihoangphi2531/REPO/main/autohatch.lua
 -- Yêu cầu: WindUI, các biến global từ file chính
 -- ===========================================================
 
